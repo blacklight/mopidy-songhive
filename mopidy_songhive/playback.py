@@ -72,7 +72,7 @@ class SonghivePlaybackProvider(backend.PlaybackProvider):
             return
 
         try:
-            from gi.repository import Gst  # type: ignore[import-untyped]
+            from gi.repository import Gst  # type: ignore
 
             headers = Gst.Structure.new_empty("headers")
             headers.set_value("Authorization", f"Bearer {token}")

@@ -49,3 +49,21 @@ line-length = 79
 profile = "black"
 line_length = 79
 known_first_party = ["mopidy_songhive"]
+
+[tool.mypy]
+
+# Lint CI runs mypy in an environment without the runtime dependencies
+# (Mopidy 4 is not on PyPI yet), so third-party imports can't be resolved
+# there. Silence only the missing-import noise; real errors still surface.
+[[tool.mypy.overrides]]
+module = [
+    "mopidy",
+    "mopidy.*",
+    "pykka",
+    "pykka.*",
+    "requests",
+    "requests.*",
+    "gi",
+    "gi.*",
+]
+ignore_missing_imports = true

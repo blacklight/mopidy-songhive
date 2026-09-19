@@ -41,7 +41,7 @@ steps:
 - name: backend-tests
   image: python:3.14
   commands:
-    - pip install -e . pytest
+    - pip install -e . pytest pytest-xdist pytest-cov pytest-mock
     - python -m pytest -n 4 --cov-report=xml
 
   when:

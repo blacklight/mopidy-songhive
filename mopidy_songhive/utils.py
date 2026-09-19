@@ -2,8 +2,8 @@ import contextlib
 import functools
 import logging
 import time
-from typing import Optional
 import weakref
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class memoize:
     """
 
     def __init__(self, ttl: Optional[int] = 60):
-        self.caches = weakref.WeakKeyDictionary()
+        self.caches: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
         self.ttl = ttl
 
     def _key(self, args, kwargs):
