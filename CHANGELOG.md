@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.2
 
 - `ci`: Fixed artifact upload to PyPI.
 
