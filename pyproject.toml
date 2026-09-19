@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools >= 61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "Mopidy-Songhive"
+description = "Mopidy extension for playing music from Songhive"
+readme = "README.md"
+requires-python = ">= 3.9"
+license = {text = "Apache License, Version 2.0"}
+authors = [
+    {name = "Mopidy-Songhive contributors"},
+]
+keywords = ["mopidy", "songhive", "music"]
+classifiers = [
+    "Environment :: No Input/Output (Daemon)",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio :: Players",
+]
+dependencies = [
+    "setuptools",
+    "Mopidy >= 4.0",
+    "Pykka >= 1.1",
+    "requests >= 2.20",
+]
+dynamic = ["version"]
+
+[project.urls]
+Source = "https://github.com/mopidy-songhive/mopidy-songhive"
+
+[project.entry-points."mopidy.ext"]
+songhive = "mopidy_songhive:Extension"
+
+[tool.setuptools]
+packages = ["mopidy_songhive"]
+zip-safe = false
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = {attr = "mopidy_songhive.__version__"}
+
+[tool.black]
+line-length = 79
+
+[tool.isort]
+profile = "black"
+line_length = 79
+known_first_party = ["mopidy_songhive"]

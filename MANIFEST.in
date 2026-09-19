@@ -1,0 +1,6 @@
+include LICENSE
+include MANIFEST.in
+include README.md
+include mopidy_songhive/ext.conf
+
+recursive-include tests *.py

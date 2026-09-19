@@ -1,0 +1,78 @@
+---
+kind: pipeline
+type: docker
+name: default
+
+trigger:
+  event:
+    exclude:
+      - pull_request
+
+steps:
+
+###
+### Lint
+###
+
+- name: backend-lint
+  image: python:3.12
+  volumes:
+    - name: pip_cache
+      path: /root/.cache/pip
+  commands:
+    - pip install flake8 black isort mypy
+    - python -m flake8 mopidy_songhive tests
+    - python -m black --check .
+    - python -m isort mopidy_songhive tests
+    - python -m mypy mopidy_songhive
+
+  when:
+    event:
+      - push
+    paths:
+      include:
+        - mopidy_songhive/**
+        - tests/**
+
+###
+### Run tests
+###
+
+- name: backend-tests
+  image: python:3.14
+  commands:
+    - pip install -e . pytest
+    - python -m pytest -n 4 --cov-report=xml
+
+  when:
+    event:
+      - push
+    paths:
+      include:
+        - mopidy_songhive/**
+        - tests/**
+
+  depends_on:
+    - backend-lint
+
+###
+### Build and publish the PyPI package
+###
+
+- name: update-pip-package
+  image: alpine
+  environment:
+    TWINE_USERNAME:
+      from_secret: pypi_user
+    TWINE_PASSWORD:
+      from_secret: pypi_pass
+
+  when:
+    event:
+      - tag
+
+  depends_on:
+    - backend-tests
+
+  commands:
+    - . .drone/update-pip-package.sh
