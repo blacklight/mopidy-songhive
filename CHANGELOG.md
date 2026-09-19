@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `ci`: Fixed artifact upload to PyPI.
+
 ## 0.1.1
 
 First public release.
