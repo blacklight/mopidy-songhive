@@ -41,6 +41,10 @@ steps:
 - name: backend-tests
   image: python:3.14
   commands:
+    # PyGObject (a Mopidy dependency) only ships as an sdist and builds
+    # against the system girepository library.
+    - apt-get update
+    - apt-get install -y --no-install-recommends libgirepository-2.0-dev libffi-dev
     - pip install -e . pytest pytest-xdist pytest-cov pytest-mock
     - python -m pytest -n 4 --cov-report=xml
 
