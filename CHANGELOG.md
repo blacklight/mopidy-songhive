@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.3
 
 - `perf`: Track, podcast episode and remote object payloads are now
   cached on disk (SQLite in the extension cache dir) and seeded from
