@@ -23,6 +23,8 @@ class SonghivePlaybackProvider(backend.PlaybackProvider):
         url = None
         if kind == "item" and value[0] == "track":
             url = client.stream_url(value[1])
+        elif kind == "item" and value[0] == "podcast_episode":
+            url = self._episode_stream_url(value[1])
         elif kind == "remote":
             url = self._remote_stream_url(value)
         elif kind == "url":
@@ -32,6 +34,21 @@ class SonghivePlaybackProvider(backend.PlaybackProvider):
 
         self._pending_stream_url = url
         return url
+
+    def _episode_stream_url(self, episode_id):
+        """Direct audio URL of a podcast episode's remote enclosure."""
+        try:
+            episode = self.backend.remote.get_podcast_episode(episode_id)
+        except SonghiveHttpError as exc:
+            logger.info(
+                "Could not resolve podcast episode %s: %s", episode_id, exc
+            )
+            return None
+        audio_url = episode.get("audio_url")
+        if not audio_url:
+            logger.info("Podcast episode %s has no playable audio", episode_id)
+            return None
+        return audio_url
 
     def _remote_stream_url(self, object_id):
         """Direct audio URL of a federated remote object."""

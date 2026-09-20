@@ -1,6 +1,16 @@
 import mopidy
 import pytest
-from conftest import ALBUM, ARTIST, LIBRARY, REMOTE_TRACK, TRACK, TRACK_2
+from conftest import (
+    ALBUM,
+    ARTIST,
+    LIBRARY,
+    PODCAST,
+    PODCAST_EPISODE,
+    PODCAST_EPISODE_2,
+    REMOTE_TRACK,
+    TRACK,
+    TRACK_2,
+)
 
 from mopidy_songhive.library import SonghiveLibraryProvider
 
@@ -19,6 +29,7 @@ def test_browse_root(provider, backend_mock):
         "Artists",
         "Albums",
         "Favorites",
+        "Podcasts",
         "Genres",
         "Tags",
     }
@@ -28,7 +39,9 @@ def test_browse_root(provider, backend_mock):
 def test_browse_root_hides_favorites_when_anonymous(provider, backend_mock):
     backend_mock.remote.authenticated = False
     refs = provider.browse("songhive:")
-    assert "Favorites" not in {r.name for r in refs}
+    names = {r.name for r in refs}
+    assert "Favorites" not in names
+    assert "Podcasts" not in names
 
 
 def test_browse_libraries(provider, backend_mock):
@@ -131,6 +144,91 @@ def test_browse_tag(provider, backend_mock):
         "songhive:track:track-1",
         "songhive:album:album-1",
     }
+
+
+def test_browse_podcasts(provider, backend_mock):
+    backend_mock.remote.get_podcasts.return_value = [PODCAST]
+    refs = provider.browse("songhive:podcasts")
+    assert refs == [
+        mopidy.models.Ref.directory(
+            uri="songhive:podcast:podcast-1", name="Test Podcast"
+        )
+    ]
+
+
+def test_browse_podcast(provider, backend_mock):
+    backend_mock.remote.get_podcast_episodes.return_value = [
+        PODCAST_EPISODE,
+        dict(PODCAST_EPISODE_2, audio_url=None),
+    ]
+    refs = provider.browse("songhive:podcast:podcast-1")
+    assert refs == [
+        mopidy.models.Ref.track(
+            uri="songhive:podcast_episode:episode-1", name="Episode One"
+        )
+    ]
+
+
+def test_browse_podcast_episode(provider, backend_mock):
+    backend_mock.remote.get_podcast_episode.return_value = PODCAST_EPISODE
+    refs = provider.browse("songhive:podcast_episode:episode-1")
+    assert refs == [
+        mopidy.models.Ref.track(
+            uri="songhive:podcast_episode:episode-1", name="Episode One"
+        )
+    ]
+
+
+def test_lookup_podcast(provider, backend_mock):
+    backend_mock.remote.get_podcast.return_value = PODCAST
+    backend_mock.remote.get_podcast_episodes.return_value = [
+        PODCAST_EPISODE,
+        PODCAST_EPISODE_2,
+    ]
+    tracks = provider.lookup("songhive:podcast:podcast-1")
+    assert [t.uri for t in tracks] == [
+        "songhive:podcast_episode:episode-1",
+        "songhive:podcast_episode:episode-2",
+    ]
+    track = tracks[0]
+    assert track.name == "Episode One"
+    assert track.album.name == "Test Podcast"
+    assert track.album.uri == "songhive:podcast:podcast-1"
+    assert next(iter(track.artists)).name == "The Host"
+    assert track.track_no == 1
+    assert track.date == "2025-09-08"
+    assert track.length == 1800000
+    assert track.genre == "Podcast"
+
+
+def test_lookup_podcast_episode(provider, backend_mock):
+    backend_mock.remote.get_podcast_episode.return_value = PODCAST_EPISODE
+    backend_mock.remote.get_podcast.return_value = PODCAST
+    tracks = provider.lookup("songhive:podcast_episode:episode-1")
+    assert len(tracks) == 1
+    assert tracks[0].uri == "songhive:podcast_episode:episode-1"
+    assert tracks[0].album.name == "Test Podcast"
+
+
+def test_lookup_many_podcast_episodes(provider, backend_mock):
+    backend_mock.remote.get_podcast_episode.side_effect = lambda eid: {
+        "episode-1": PODCAST_EPISODE,
+        "episode-2": PODCAST_EPISODE_2,
+    }[eid]
+    backend_mock.remote.get_podcast.return_value = PODCAST
+    results = provider.lookup_many(
+        [
+            "songhive:podcast_episode:episode-1",
+            "songhive:podcast_episode:episode-2",
+        ]
+    )
+    backend_mock.remote.get_podcast_episodes_by_ids.assert_called_once()
+    assert results["songhive:podcast_episode:episode-1"][0].name == (
+        "Episode One"
+    )
+    assert results["songhive:podcast_episode:episode-2"][0].album.name == (
+        "Test Podcast"
+    )
 
 
 def test_lookup_track(provider, backend_mock):

@@ -62,6 +62,11 @@ class SonghiveLibraryProvider(backend.LibraryProvider):
                     uri=urilib.section_uri("favorites"), name="Favorites"
                 )
             )
+            refs.append(
+                models.Ref.directory(
+                    uri=urilib.section_uri("podcasts"), name="Podcasts"
+                )
+            )
         refs.extend(
             [
                 models.Ref.directory(
@@ -97,6 +102,8 @@ class SonghiveLibraryProvider(backend.LibraryProvider):
                 ]
             if section == "tags":
                 return [remote.tag_ref(t["name"]) for t in remote.get_tags()]
+            if section == "podcasts":
+                return [remote.podcast_ref(p) for p in remote.get_podcasts()]
         except SonghiveHttpError as exc:
             logger.info("Songhive browse of %s failed: %s", section, exc)
         return []
@@ -130,6 +137,15 @@ class SonghiveLibraryProvider(backend.LibraryProvider):
             if item_kind == "track":
                 track = remote.get_track(item_id)
                 return [remote.track_ref(track)] if track else []
+            if item_kind == "podcast":
+                return [
+                    remote.podcast_episode_ref(e)
+                    for e in remote.get_podcast_episodes(item_id)
+                    if e.get("audio_url")
+                ]
+            if item_kind == "podcast_episode":
+                episode = remote.get_podcast_episode(item_id)
+                return [remote.podcast_episode_ref(episode)] if episode else []
         except SonghiveHttpError as exc:
             logger.info(
                 "Songhive browse of %s:%s failed: %s", item_kind, item_id, exc
@@ -200,6 +216,14 @@ class SonghiveLibraryProvider(backend.LibraryProvider):
                     return [remote.genre_ref(item_id)]
                 if item_kind == "tag":
                     return [remote.tag_ref(item_id)]
+                if item_kind == "podcast":
+                    return [remote.podcast_ref(remote.get_podcast(item_id))]
+                if item_kind == "podcast_episode":
+                    return [
+                        remote.podcast_episode_ref(
+                            remote.get_podcast_episode(item_id)
+                        )
+                    ]
             except SonghiveHttpError:
                 return []
         elif kind == "remote":
@@ -223,18 +247,22 @@ class SonghiveLibraryProvider(backend.LibraryProvider):
     def lookup_many(self, uris):
         """Resolve several URIs, fetching distinct tracks concurrently.
 
-        Plain ``songhive:track:`` URIs dominate real-world call sites
-        (queueing an album, a playlist, or a whole library), so they go
-        through one parallel fetch instead of sequential per-URI
-        requests. Everything else falls back to the regular lookup path.
+        Plain ``songhive:track:`` and ``songhive:podcast_episode:`` URIs
+        dominate real-world call sites (queueing an album, a playlist, a
+        podcast, or a whole library), so they go through one parallel
+        fetch instead of sequential per-URI requests. Everything else
+        falls back to the regular lookup path.
         """
         results = {}
         track_uris = {}
+        episode_uris = {}
         other_uris = []
         for uri in uris:
             kind, value = urilib.parse(uri)
             if kind == "item" and value[0] == "track":
                 track_uris[uri] = value[1]
+            elif kind == "item" and value[0] == "podcast_episode":
+                episode_uris[uri] = value[1]
             else:
                 other_uris.append(uri)
 
@@ -244,6 +272,24 @@ class SonghiveLibraryProvider(backend.LibraryProvider):
             for uri, track_id in track_uris.items():
                 data = fetched.get(track_id)
                 results[uri] = [remote.to_track(data)] if data else []
+
+        if episode_uris:
+            fetched = remote.get_podcast_episodes_by_ids(episode_uris.values())
+            podcasts = remote.fetch_parallel(
+                remote.get_podcast,
+                [
+                    e["podcast_id"]
+                    for e in fetched.values()
+                    if e.get("podcast_id")
+                ],
+            )
+            for uri, episode_id in episode_uris.items():
+                data = fetched.get(episode_id)
+                if not data:
+                    results[uri] = []
+                    continue
+                podcast = podcasts.get(data.get("podcast_id"))
+                results[uri] = [remote.to_podcast_track(data, podcast)]
 
         for uri in other_uris:
             results[uri] = self._lookup(uri, seen=set())
@@ -286,6 +332,14 @@ class SonghiveLibraryProvider(backend.LibraryProvider):
                     return self._lookup_genre(item_id)
                 if item_kind == "tag":
                     return self._lookup_tag(item_id)
+                if item_kind == "podcast":
+                    return self._lookup_podcast(item_id)
+                if item_kind == "podcast_episode":
+                    return [
+                        self._episode_track(
+                            remote.get_podcast_episode(item_id)
+                        )
+                    ]
 
             elif kind == "remote":
                 obj = remote.get_remote_object(value)
@@ -308,6 +362,30 @@ class SonghiveLibraryProvider(backend.LibraryProvider):
             logger.info("Songhive lookup of %s failed: %s", uri, exc)
 
         return []
+
+    def _lookup_podcast(self, podcast_id):
+        remote = self.backend.remote
+        try:
+            podcast = remote.get_podcast(podcast_id)
+        except SonghiveHttpError:
+            podcast = None
+        return [
+            remote.to_podcast_track(e, podcast)
+            for e in remote.get_podcast_episodes(podcast_id)
+            if e.get("audio_url")
+        ]
+
+    def _episode_track(self, episode):
+        """Build a Track for an episode, attaching the show as album."""
+        remote = self.backend.remote
+        podcast = None
+        podcast_id = episode.get("podcast_id")
+        if podcast_id:
+            try:
+                podcast = remote.get_podcast(podcast_id)
+            except SonghiveHttpError:
+                podcast = None
+        return remote.to_podcast_track(episode, podcast)
 
     def _lookup_genre(self, name):
         remote = self.backend.remote

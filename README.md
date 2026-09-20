@@ -6,6 +6,8 @@
 ## Features
 
 - Browse libraries, playlists, artists, albums, genres and tags
+- Followed podcasts exposed in their own folder, one sub-folder per show;
+  episodes stream straight from the source enclosure URL
 - Favorite tracks exposed as a browsable folder
 - Full text search across tracks, albums and artists (plus cached
   federated objects)
@@ -76,5 +78,6 @@ transcode_bitrate = 128     # kbps
 `songhive:track:123`, `songhive:album:123`, `songhive:artist:123`,
 `songhive:playlist:123`, `songhive:library:123`,
 `songhive:genre:rock`, `songhive:tag:favorites`,
+`songhive:podcast:123` / `songhive:podcast_episode:123` for podcasts,
 `songhive:remote:<object_id>` for federated content, and
 `songhive:<http(s) url>` for direct URL lookups.

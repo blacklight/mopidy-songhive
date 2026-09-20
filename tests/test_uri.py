@@ -9,6 +9,7 @@ def test_sections():
     assert uri.parse("songhive:libraries") == ("section", "libraries")
     assert uri.parse("songhive:favorites") == ("section", "favorites")
     assert uri.parse("songhive:tags") == ("section", "tags")
+    assert uri.parse("songhive:podcasts") == ("section", "podcasts")
 
 
 def test_items():
@@ -20,6 +21,11 @@ def test_items():
     assert uri.parse("songhive:playlist:p1") == (
         "item",
         ("playlist", "p1"),
+    )
+    assert uri.parse("songhive:podcast:p1") == ("item", ("podcast", "p1"))
+    assert uri.parse("songhive:podcast_episode:e1") == (
+        "item",
+        ("podcast_episode", "e1"),
     )
 
 
@@ -59,6 +65,8 @@ def test_builders():
     assert uri.library_uri("l1") == "songhive:library:l1"
     assert uri.genre_uri("drum & bass") == "songhive:genre:drum%20%26%20bass"
     assert uri.tag_uri("x") == "songhive:tag:x"
+    assert uri.podcast_uri("p1") == "songhive:podcast:p1"
+    assert uri.podcast_episode_uri("e1") == "songhive:podcast_episode:e1"
     assert uri.remote_uri("o1") == "songhive:remote:o1"
     assert uri.section_uri("artists") == "songhive:artists"
 

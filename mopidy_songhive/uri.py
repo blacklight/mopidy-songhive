@@ -18,6 +18,9 @@ Scheme layout::
     songhive:tags                  all tags (folders)
     songhive:tag:<name>            items of a tag
     songhive:track:<id>            a single track
+    songhive:podcasts              all followed podcasts (folders)
+    songhive:podcast:<id>          episodes of a podcast
+    songhive:podcast_episode:<id>  a single podcast episode
     songhive:remote:<object_id>    a cached remote (federated) object
     songhive:search                pseudo URI identifying search results
     songhive:<url>                 an embedded URL (see below)
@@ -44,6 +47,7 @@ SECTIONS = (
     "favorites",
     "genres",
     "tags",
+    "podcasts",
 )
 
 ITEM_KINDS = (
@@ -54,6 +58,8 @@ ITEM_KINDS = (
     "track",
     "genre",
     "tag",
+    "podcast",
+    "podcast_episode",
     "remote",
 )
 
@@ -106,6 +112,14 @@ def genre_uri(name) -> Uri:
 
 def tag_uri(name) -> Uri:
     return item_uri("tag", name)
+
+
+def podcast_uri(podcast_id) -> Uri:
+    return item_uri("podcast", podcast_id)
+
+
+def podcast_episode_uri(episode_id) -> Uri:
+    return item_uri("podcast_episode", episode_id)
 
 
 def remote_uri(object_id) -> Uri:

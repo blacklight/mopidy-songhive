@@ -208,6 +208,18 @@ class SonghiveClient:
     def tag_ref(self, name):
         return models.Ref.directory(uri=uri.tag_uri(name), name=str(name))
 
+    def podcast_ref(self, data):
+        return models.Ref.directory(
+            uri=uri.podcast_uri(data["id"]),
+            name=data.get("title"),
+        )
+
+    def podcast_episode_ref(self, data):
+        return models.Ref.track(
+            uri=uri.podcast_episode_uri(data["id"]),
+            name=data.get("title"),
+        )
+
     def remote_ref(self, obj):
         """Build a ref for a cached remote object."""
         name = obj.get("name") or obj.get("domain")
@@ -233,6 +245,39 @@ class SonghiveClient:
         except (KeyError, IndexError, ValueError):
             name = data.get("title") or data.get("name")
         return name
+
+    def to_podcast_track(self, data, podcast=None):
+        """Convert a PodcastEpisode payload into a mopidy Track.
+
+        ``podcast`` is the optional parent-show payload; when present its
+        title becomes the album and its author (or title) the artist.
+        """
+        artists = []
+        album = None
+        podcast = podcast or {}
+        podcast_id = data.get("podcast_id") or podcast.get("id")
+        if podcast_id:
+            album = models.Album(
+                uri=uri.podcast_uri(podcast_id),
+                name=podcast.get("title"),
+            )
+        artist_name = podcast.get("author") or podcast.get("title")
+        if artist_name:
+            artists = [models.Artist(name=artist_name)]
+
+        published_at = data.get("published_at")
+        duration = data.get("duration_seconds")
+        return models.Track(
+            uri=uri.podcast_episode_uri(data["id"]),
+            name=data.get("title"),
+            artists=artists,
+            album=album,
+            track_no=data.get("episode_number") or 0,
+            date=str(published_at)[:10] if published_at else None,
+            length=int(duration * 1000) if duration else None,
+            comment=data.get("description"),
+            genre="Podcast",
+        )
 
     def remote_object_track(self, obj):
         """Convert a remote object with an ``audio_url`` into a Track."""
@@ -410,6 +455,44 @@ class SonghiveClient:
         )
 
     # ------------------------------------------------------------------
+    # Podcasts
+    # ------------------------------------------------------------------
+
+    @memoize(ttl=60)
+    def get_podcasts(self):
+        """Podcasts the authenticated user follows (empty when anonymous)."""
+        if not self.authenticated:
+            return []
+        return self.http.get_all(
+            "/podcasts/",
+            params={"sort_by": "latest", "sort_dir": "desc"},
+        )
+
+    @memoize(ttl=None)
+    def get_podcast(self, podcast_id):
+        return self.http.get(f"/podcasts/{podcast_id}")
+
+    @memoize(ttl=60)
+    def get_podcast_episodes(self, podcast_id):
+        """Episodes of a podcast, newest first."""
+        return self.http.get_all(
+            f"/podcasts/{podcast_id}/episodes",
+            params={"sort": "newest"},
+        )
+
+    @memoize(ttl=None)
+    def get_podcast_episode(self, episode_id):
+        return self.http.get(f"/podcasts/episodes/{episode_id}")
+
+    def get_podcast_episodes_by_ids(
+        self, episode_ids, max_workers=_MAX_FETCH_WORKERS
+    ):
+        """Concurrently fetch episode payloads for a list of episode ids."""
+        return self.fetch_parallel(
+            self.get_podcast_episode, episode_ids, max_workers=max_workers
+        )
+
+    # ------------------------------------------------------------------
     # Genres / tags
     # ------------------------------------------------------------------
 
@@ -485,7 +568,7 @@ class SonghiveClient:
     # ------------------------------------------------------------------
 
     _SPA_RESOURCE_RE = re.compile(
-        r"^/(tracks|albums|artists|playlists|libraries)/([^/?#]+)/?$"
+        r"^/(tracks|albums|artists|playlists|libraries|podcasts)/([^/?#]+)/?$"
     )
     _SPA_TAG_RE = re.compile(r"^/(tags|genres)/([^/?#]+)/?$")
     _SPA_REMOTE_RE = re.compile(
@@ -504,6 +587,7 @@ class SonghiveClient:
                 "artists": "artist",
                 "playlists": "playlist",
                 "libraries": "library",
+                "podcasts": "podcast",
             }[plural]
             return uri.item_uri(kind, item_id)
 
@@ -520,6 +604,9 @@ class SonghiveClient:
 
         if path == "/favorites":
             return uri.section_uri("favorites")
+
+        if path == "/podcasts":
+            return uri.section_uri("podcasts")
 
         return None
 
@@ -678,6 +765,8 @@ class SonghiveClient:
             "artist": f"/artists/{item_id}",
             "playlist": f"/playlists/{item_id}",
             "library": f"/libraries/{item_id}",
+            "podcast": f"/podcasts/{item_id}",
+            "podcast_episode": f"/podcasts/episodes/{item_id}",
             "remote": f"/remote/objects/{item_id}",
         }.get(kind)
         if path is None:
@@ -695,6 +784,12 @@ class SonghiveClient:
             or data.get("cover_url")
             or data.get("avatar_url")
         )
+        if not url and kind == "podcast_episode" and data.get("podcast_id"):
+            # Episodes without their own artwork use the show's image.
+            try:
+                url = self.get_podcast(data["podcast_id"]).get("image_url")
+            except SonghiveHttpError:
+                url = None
         url = self.absolute_url(url)
         if not url:
             return []

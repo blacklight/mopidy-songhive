@@ -1,5 +1,12 @@
 import pytest
-from conftest import ALBUM, REMOTE_TRACK, TRACK, TRACK_2
+from conftest import (
+    ALBUM,
+    PODCAST,
+    PODCAST_EPISODE,
+    REMOTE_TRACK,
+    TRACK,
+    TRACK_2,
+)
 
 from mopidy_songhive.http import SonghiveHttpError
 
@@ -115,6 +122,8 @@ def test_resolve_url_local_track(songhive_client, mocker):
         ("/genres/rock", "songhive:genre:rock"),
         ("/tags/live", "songhive:tag:live"),
         ("/favorites", "songhive:favorites"),
+        ("/podcasts", "songhive:podcasts"),
+        ("/podcasts/podcast-1", "songhive:podcast:podcast-1"),
         ("/remote/track/remote-1", "songhive:remote:remote-1"),
         ("/remote/playlist/remote-9", "songhive:remote:remote-9"),
         ("/activities/@bob/remote-1", "songhive:remote:remote-1"),
@@ -237,6 +246,70 @@ def test_get_remote_object_unwraps(songhive_client, mocker):
     assert songhive_client.get_remote_object("remote-1") == REMOTE_TRACK
     songhive_client.http.get.return_value = REMOTE_TRACK
     assert songhive_client.get_remote_object("remote-1") == REMOTE_TRACK
+
+
+def test_get_podcasts_authenticated(songhive_client, mocker):
+    songhive_client.http = mocker.Mock()
+    songhive_client.http.get_all.return_value = [PODCAST]
+    podcasts = songhive_client.get_podcasts()
+    args, kwargs = songhive_client.http.get_all.call_args
+    assert args[0] == "/podcasts/"
+    assert kwargs["params"]["sort_by"] == "latest"
+    assert podcasts == [PODCAST]
+
+
+def test_get_podcasts_anonymous(anon_config, mocker):
+    from mopidy_songhive.remote import SonghiveClient
+
+    mocker.patch.object(SonghiveClient, "_check_connection")
+    client = SonghiveClient(anon_config)
+    client.http = mocker.Mock()
+    client.http.authenticated = False
+    assert client.get_podcasts() == []
+    client.http.get_all.assert_not_called()
+
+
+def test_get_podcast_episodes(songhive_client, mocker):
+    songhive_client.http = mocker.Mock()
+    songhive_client.http.get_all.return_value = [PODCAST_EPISODE]
+    episodes = songhive_client.get_podcast_episodes("podcast-1")
+    args, kwargs = songhive_client.http.get_all.call_args
+    assert args[0] == "/podcasts/podcast-1/episodes"
+    assert kwargs["params"]["sort"] == "newest"
+    assert episodes == [PODCAST_EPISODE]
+
+
+def test_to_podcast_track(songhive_client):
+    track = songhive_client.to_podcast_track(PODCAST_EPISODE, PODCAST)
+    assert track.uri == "songhive:podcast_episode:episode-1"
+    assert track.name == "Episode One"
+    assert track.album.name == "Test Podcast"
+    assert track.album.uri == "songhive:podcast:podcast-1"
+    assert next(iter(track.artists)).name == "The Host"
+    assert track.track_no == 1
+    assert track.date == "2025-09-08"
+    assert track.length == 1800000
+    assert track.comment == "The first episode"
+    assert track.genre == "Podcast"
+
+
+def test_to_podcast_track_without_podcast(songhive_client):
+    track = songhive_client.to_podcast_track(PODCAST_EPISODE)
+    # The album still gets its URI from the episode's podcast_id.
+    assert track.album.uri == "songhive:podcast:podcast-1"
+    assert track.album.name is None
+    assert list(track.artists) == []
+
+
+def test_get_image_podcast_episode_falls_back_to_show(songhive_client, mocker):
+    songhive_client.http = mocker.Mock()
+    songhive_client.http.get.side_effect = lambda path, params=None: (
+        {"id": "episode-1", "podcast_id": "podcast-1"}
+        if path == "/podcasts/episodes/episode-1"
+        else {"id": "podcast-1", "image_url": "/covers/show.jpg"}
+    )
+    images = songhive_client.get_image("podcast_episode", "episode-1")
+    assert images[0].uri == "https://songhive.example.com/covers/show.jpg"
 
 
 def test_remote_object_track(songhive_client):

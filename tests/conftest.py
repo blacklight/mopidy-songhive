@@ -75,6 +75,41 @@ LIBRARY = {
     "visibility": "public",
 }
 
+PODCAST = {
+    "id": "podcast-1",
+    "feed_url": "https://podcasts.example.com/feed.xml",
+    "title": "Test Podcast",
+    "author": "The Host",
+    "episode_count": 2,
+    "unplayed_count": 2,
+}
+
+PODCAST_EPISODE = {
+    "id": "episode-1",
+    "podcast_id": "podcast-1",
+    "guid": "ep-1",
+    "title": "Episode One",
+    "description": "The first episode",
+    "audio_url": "https://cdn.example.com/episodes/1.mp3",
+    "audio_type": "audio/mpeg",
+    "duration_seconds": 1800,
+    "published_at": "2025-09-08T12:00:00Z",
+    "episode_number": 1,
+    "played": False,
+}
+
+PODCAST_EPISODE_2 = {
+    "id": "episode-2",
+    "podcast_id": "podcast-1",
+    "guid": "ep-2",
+    "title": "Episode Two",
+    "audio_url": "https://cdn.example.com/episodes/2.mp3",
+    "duration_seconds": 2400,
+    "published_at": "2025-09-01T12:00:00Z",
+    "episode_number": 2,
+    "played": True,
+}
+
 REMOTE_TRACK = {
     "id": "remote-1",
     "canonical_url": "https://other.example.com/tracks/99",
@@ -144,6 +179,11 @@ def backend_mock(songhive_client):
             remote.get_track, track_ids, max_workers=max_workers
         )
     )
+    remote.get_podcast_episodes_by_ids.side_effect = (
+        lambda episode_ids, max_workers=8: _sync_fetch(
+            remote.get_podcast_episode, episode_ids, max_workers=max_workers
+        )
+    )
     # Bind the real model/ref builders so providers produce real models.
     for name in (
         "track_ref",
@@ -153,10 +193,13 @@ def backend_mock(songhive_client):
         "library_ref",
         "genre_ref",
         "tag_ref",
+        "podcast_ref",
+        "podcast_episode_ref",
         "remote_ref",
         "to_track",
         "to_album",
         "to_artist",
+        "to_podcast_track",
         "remote_object_track",
         "format_album",
         "is_own_url",

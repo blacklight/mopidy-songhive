@@ -2,7 +2,7 @@ import sys
 from unittest import mock
 
 import pytest
-from conftest import REMOTE_TRACK
+from conftest import PODCAST_EPISODE, REMOTE_TRACK
 
 from mopidy_songhive.playback import SonghivePlaybackProvider
 
@@ -49,6 +49,31 @@ def test_translate_remote_http_error(provider, backend_mock):
         404, "gone"
     )
     assert provider.translate_uri("songhive:remote:remote-1") is None
+
+
+def test_translate_podcast_episode(provider, backend_mock):
+    backend_mock.remote.get_podcast_episode.return_value = PODCAST_EPISODE
+    result = provider.translate_uri("songhive:podcast_episode:episode-1")
+    backend_mock.remote.get_podcast_episode.assert_called_once_with(
+        "episode-1"
+    )
+    assert result == "https://cdn.example.com/episodes/1.mp3"
+
+
+def test_translate_podcast_episode_without_audio(provider, backend_mock):
+    backend_mock.remote.get_podcast_episode.return_value = dict(
+        PODCAST_EPISODE, audio_url=None
+    )
+    assert provider.translate_uri("songhive:podcast_episode:episode-1") is None
+
+
+def test_translate_podcast_episode_http_error(provider, backend_mock):
+    from mopidy_songhive.http import SonghiveHttpError
+
+    backend_mock.remote.get_podcast_episode.side_effect = SonghiveHttpError(
+        404, "gone"
+    )
+    assert provider.translate_uri("songhive:podcast_episode:episode-1") is None
 
 
 def test_translate_embedded_url(provider, backend_mock):
