@@ -22,7 +22,7 @@ class SonghivePlaybackProvider(backend.PlaybackProvider):
 
         url = None
         if kind == "item" and value[0] == "track":
-            url = client.stream_url(value[1])
+            url = self._track_stream_url(value[1])
         elif kind == "item" and value[0] == "podcast_episode":
             url = self._episode_stream_url(value[1])
         elif kind == "remote":
@@ -35,10 +35,33 @@ class SonghivePlaybackProvider(backend.PlaybackProvider):
         self._pending_stream_url = url
         return url
 
+    def _track_stream_url(self, track_id):
+        """Stream URL for a local track, refreshing its metadata first.
+
+        Cached track metadata may be stale (the cache lives on disk and
+        never expires), so playback always re-fetches the track: a 404
+        drops the ghost entry and fails fast, while a successful fetch
+        refreshes the cached payload. Other errors are tolerated — the
+        stream endpoint is tried anyway.
+        """
+        client = self.backend.remote
+        try:
+            client.get_track(track_id, fresh=True)
+        except SonghiveHttpError as exc:
+            if exc.status_code == 404:
+                logger.info("Songhive track %s is gone", track_id)
+                return None
+            logger.info(
+                "Could not refresh track %s metadata: %s", track_id, exc
+            )
+        return client.stream_url(track_id)
+
     def _episode_stream_url(self, episode_id):
         """Direct audio URL of a podcast episode's remote enclosure."""
         try:
-            episode = self.backend.remote.get_podcast_episode(episode_id)
+            episode = self.backend.remote.get_podcast_episode(
+                episode_id, fresh=True
+            )
         except SonghiveHttpError as exc:
             logger.info(
                 "Could not resolve podcast episode %s: %s", episode_id, exc
@@ -53,7 +76,7 @@ class SonghivePlaybackProvider(backend.PlaybackProvider):
     def _remote_stream_url(self, object_id):
         """Direct audio URL of a federated remote object."""
         try:
-            obj = self.backend.remote.get_remote_object(object_id)
+            obj = self.backend.remote.get_remote_object(object_id, fresh=True)
         except SonghiveHttpError as exc:
             logger.info(
                 "Could not resolve remote object %s: %s", object_id, exc

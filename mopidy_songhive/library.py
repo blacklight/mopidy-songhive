@@ -562,21 +562,21 @@ class SonghiveLibraryProvider(backend.LibraryProvider):
         if not terms:
             return []
         remote = self.backend.remote
-        found = []
         try:
             sections = remote.search(terms[0], entities="remote")
         except SonghiveHttpError:
             return []
-        for item in sections.get("remote", []):
-            if item.get("type") != "track" or not item.get("id"):
-                continue
-            try:
-                obj = remote.get_remote_object(item["id"])
-            except SonghiveHttpError:
-                continue
-            if obj.get("audio_url"):
-                found.append(remote.remote_object_track(obj))
-        return found
+        ids = [
+            item["id"]
+            for item in sections.get("remote", [])
+            if item.get("type") == "track" and item.get("id")
+        ]
+        fetched = remote.fetch_parallel(remote.get_remote_object, ids)
+        return [
+            remote.remote_object_track(obj)
+            for obj in (fetched.get(item_id) for item_id in ids)
+            if obj and obj.get("audio_url")
+        ]
 
     # ------------------------------------------------------------------
     # Distinct fields / images
@@ -600,14 +600,21 @@ class SonghiveLibraryProvider(backend.LibraryProvider):
         return set()
 
     def get_images(self, uris):
-        results = {}
+        """Images for several URIs, fetched concurrently."""
+        remote = self.backend.remote
+        targets = {}
         for uri_ in uris:
             kind, value = urilib.parse(uri_)
-            images = []
             if kind == "item":
-                item_kind, item_id = value
-                images = self.backend.remote.get_image(item_kind, item_id)
+                targets[uri_] = value
             elif kind == "remote":
-                images = self.backend.remote.get_image("remote", value)
-            results[uri_] = images
+                targets[uri_] = ("remote", value)
+        fetched = remote.fetch_parallel(
+            lambda target: remote.get_image(*target),
+            list(targets.values()),
+        )
+        results = {}
+        for uri_ in uris:
+            target = targets.get(uri_)
+            results[uri_] = fetched.get(target, []) if target else []
         return results

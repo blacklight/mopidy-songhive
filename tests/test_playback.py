@@ -17,7 +17,30 @@ def test_translate_track(provider, backend_mock):
         "https://songhive.example.com/api/v1/stream/track-1"
     )
     result = provider.translate_uri("songhive:track:track-1")
+    # Playback always re-fetches track metadata to keep the cache fresh.
+    backend_mock.remote.get_track.assert_called_once_with(
+        "track-1", fresh=True
+    )
     backend_mock.remote.stream_url.assert_called_once_with("track-1")
+    assert result == "https://songhive.example.com/api/v1/stream/track-1"
+
+
+def test_translate_track_gone(provider, backend_mock):
+    from mopidy_songhive.http import SonghiveHttpError
+
+    backend_mock.remote.get_track.side_effect = SonghiveHttpError(404, "gone")
+    assert provider.translate_uri("songhive:track:track-9") is None
+    backend_mock.remote.stream_url.assert_not_called()
+
+
+def test_translate_track_refresh_failure_still_plays(provider, backend_mock):
+    from mopidy_songhive.http import SonghiveHttpError
+
+    backend_mock.remote.get_track.side_effect = SonghiveHttpError(500, "boom")
+    backend_mock.remote.stream_url.return_value = (
+        "https://songhive.example.com/api/v1/stream/track-1"
+    )
+    result = provider.translate_uri("songhive:track:track-1")
     assert result == "https://songhive.example.com/api/v1/stream/track-1"
 
 
@@ -55,7 +78,7 @@ def test_translate_podcast_episode(provider, backend_mock):
     backend_mock.remote.get_podcast_episode.return_value = PODCAST_EPISODE
     result = provider.translate_uri("songhive:podcast_episode:episode-1")
     backend_mock.remote.get_podcast_episode.assert_called_once_with(
-        "episode-1"
+        "episode-1", fresh=True
     )
     assert result == "https://cdn.example.com/episodes/1.mp3"
 

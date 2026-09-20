@@ -1,6 +1,7 @@
 import pytest
 from conftest import (
     ALBUM,
+    ARTIST,
     PODCAST,
     PODCAST_EPISODE,
     REMOTE_TRACK,
@@ -472,3 +473,127 @@ def test_fetch_parallel_empty(songhive_client, mocker):
     songhive_client.http = mocker.Mock()
     assert songhive_client.get_tracks_by_ids([]) == {}
     songhive_client.http.get.assert_not_called()
+
+
+def test_collection_tracks_seed_track_cache(songhive_client, mocker):
+    songhive_client.http = mocker.Mock()
+    songhive_client.http.get_all.return_value = [TRACK, TRACK_2]
+
+    songhive_client.get_library_tracks("library-1")
+
+    # The listing's payloads are cached, so per-track lookups are free.
+    assert songhive_client.get_track("track-1") == TRACK
+    assert songhive_client.get_track("track-2") == TRACK_2
+    songhive_client.http.get.assert_not_called()
+
+
+def test_get_tracks_seeds_track_cache(songhive_client, mocker):
+    songhive_client.http = mocker.Mock()
+    songhive_client.http.get_all.return_value = [TRACK]
+
+    songhive_client.get_genre_tracks("rock")
+
+    assert songhive_client.get_track("track-1") == TRACK
+    songhive_client.http.get.assert_not_called()
+
+
+def test_playlist_tracks_seed_track_cache(songhive_client, mocker):
+    songhive_client.http = mocker.Mock()
+    songhive_client.http.get_all.return_value = [TRACK]
+
+    songhive_client.get_playlist_tracks("playlist-1")
+
+    assert songhive_client.get_track("track-1") == TRACK
+    songhive_client.http.get.assert_not_called()
+
+
+def test_album_tracks_seed_track_cache(songhive_client, mocker):
+    embedded = [
+        {k: v for k, v in TRACK.items() if k not in ("artist", "album")},
+        {k: v for k, v in TRACK_2.items() if k not in ("artist", "album")},
+    ]
+    songhive_client.http = mocker.Mock()
+    songhive_client.http.get.return_value = dict(ALBUM, tracks=embedded)
+
+    songhive_client.get_album("album-1")
+
+    track = songhive_client.get_track("track-1")
+    songhive_client.http.get.assert_called_once()
+    # Embedded payloads are enriched with the parent album's context.
+    assert track["album"]["title"] == "The Album"
+    assert track["artist"]["name"] == "The Artist"
+
+
+def test_artist_tracks_seed_track_cache(songhive_client, mocker):
+    embedded = [
+        {k: v for k, v in TRACK.items() if k != "artist"},
+    ]
+    songhive_client.http = mocker.Mock()
+    songhive_client.http.get.return_value = dict(ARTIST, tracks=embedded)
+
+    songhive_client.get_artist("artist-1")
+
+    track = songhive_client.get_track("track-1")
+    songhive_client.http.get.assert_called_once()
+    assert track["artist"]["name"] == "The Artist"
+
+
+def test_podcast_episodes_seed_episode_cache(songhive_client, mocker):
+    songhive_client.http = mocker.Mock()
+    songhive_client.http.get_all.return_value = [PODCAST_EPISODE]
+
+    songhive_client.get_podcast_episodes("podcast-1")
+
+    assert songhive_client.get_podcast_episode("episode-1") == (
+        PODCAST_EPISODE
+    )
+    songhive_client.http.get.assert_not_called()
+
+
+def test_get_track_fresh_bypasses_cache(songhive_client, mocker):
+    songhive_client.http = mocker.Mock()
+    songhive_client.http.get.return_value = TRACK
+
+    songhive_client.get_track("track-1")
+    songhive_client.get_track("track-1", fresh=True)
+
+    assert songhive_client.http.get.call_count == 2
+
+
+def test_get_track_404_invalidates_cache(songhive_client, mocker):
+    songhive_client.http = mocker.Mock()
+    songhive_client.http.get_all.return_value = [TRACK]
+    songhive_client.get_library_tracks("library-1")
+
+    songhive_client.http.get.side_effect = SonghiveHttpError(404, "gone")
+    with pytest.raises(SonghiveHttpError):
+        songhive_client.get_track("track-1", fresh=True)
+
+    # The ghost entry is gone — a later lookup hits the API again.
+    songhive_client.http.get.side_effect = None
+    songhive_client.http.get.return_value = TRACK
+    songhive_client.http.get.reset_mock()
+    assert songhive_client.get_track("track-1") == TRACK
+    songhive_client.http.get.assert_called_once()
+
+
+def _client_with_cache_dir(config, mocker, cache_dir):
+    from mopidy_songhive.remote import SonghiveClient
+
+    config["core"] = {"cache_dir": str(cache_dir)}
+    mocker.patch.object(SonghiveClient, "_check_connection")
+    return SonghiveClient(config)
+
+
+def test_metadata_cache_persists_across_clients(config, mocker, tmp_path):
+    client = _client_with_cache_dir(config, mocker, tmp_path)
+    client.http = mocker.Mock()
+    client.http.get.return_value = TRACK
+    client.get_track("track-1")
+    client.http.get.assert_called_once()
+
+    # A new client over the same cache dir serves the track from disk.
+    restarted = _client_with_cache_dir(config, mocker, tmp_path)
+    restarted.http = mocker.Mock()
+    assert restarted.get_track("track-1") == TRACK
+    restarted.http.get.assert_not_called()

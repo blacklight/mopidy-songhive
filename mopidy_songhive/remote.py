@@ -13,7 +13,10 @@ from urllib.parse import urlencode, urljoin, urlparse
 
 from mopidy import models
 
+import mopidy_songhive
+
 from . import uri
+from .cache import MetadataCache
 from .http import SonghiveHttpClient, SonghiveHttpError
 from .utils import memoize
 
@@ -63,7 +66,17 @@ class SonghiveClient:
             token=self.token,
             proxy=config.get("proxy"),
         )
+        self.cache = MetadataCache(self._cache_dir(config))
         self.user = self._check_connection()
+
+    @staticmethod
+    def _cache_dir(config):
+        """The extension's cache dir, or None when unavailable."""
+        try:
+            return mopidy_songhive.Extension.get_cache_dir(config)
+        except Exception as exc:
+            logger.debug("No Songhive cache directory: %s", exc)
+            return None
 
     @property
     def authenticated(self):
@@ -314,7 +327,7 @@ class SonghiveClient:
 
     @memoize(ttl=60)
     def get_library_tracks(self, library_id):
-        return self.http.get_all(
+        tracks = self.http.get_all(
             f"/libraries/{library_id}/tracks",
             params={
                 "include": "artist,album",
@@ -322,6 +335,8 @@ class SonghiveClient:
                 "sort_dir": "asc",
             },
         )
+        self.cache.set_many("track", tracks)
+        return tracks
 
     # ------------------------------------------------------------------
     # Artists / albums / tracks
@@ -335,9 +350,27 @@ class SonghiveClient:
 
     @memoize(ttl=None)
     def get_artist(self, artist_id, include="albums,tracks"):
-        return self.http.get(
+        artist = self.http.get(
             f"/artists/{artist_id}", params={"include": include}
         )
+        self._seed_artist_tracks(artist)
+        return artist
+
+    def _seed_artist_tracks(self, artist):
+        """Cache an artist's embedded tracks, enriched with its context."""
+        if not isinstance(artist, dict):
+            return
+        tracks = artist.get("tracks") or []
+        if not tracks:
+            return
+        summary = {"id": artist.get("id"), "name": artist.get("name")}
+        for track in tracks:
+            if not isinstance(track, dict):
+                continue
+            track.setdefault("artist_id", artist.get("id"))
+            if not track.get("artist"):
+                track["artist"] = summary
+        self.cache.set_many("track", tracks)
 
     @memoize(ttl=60)
     def get_albums(self, query=None, artist_id=None, genre=None):
@@ -354,22 +387,67 @@ class SonghiveClient:
 
     @memoize(ttl=None)
     def get_album(self, album_id, include="artist,tracks"):
-        return self.http.get(
+        album = self.http.get(
             f"/albums/{album_id}", params={"include": include}
         )
+        self._seed_album_tracks(album)
+        return album
 
-    @memoize(ttl=None)
-    def get_track(self, track_id):
-        return self.http.get(
-            f"/tracks/{track_id}",
-            params={"include": "artist,album,tags,genres"},
-        )
+    def get_track(self, track_id, fresh=False):
+        """Track payload, served from the metadata cache when known.
+
+        Collection listings seed the cache, so tracks seen while
+        browsing are returned without another request. ``fresh=True``
+        bypasses the cache and stores the response — playback uses it
+        to revalidate metadata before streaming.
+        """
+        if not fresh:
+            cached = self.cache.get("track", track_id)
+            if cached is not None:
+                return cached
+        try:
+            data = self.http.get(
+                f"/tracks/{track_id}",
+                params={"include": "artist,album,tags,genres"},
+            )
+        except SonghiveHttpError as exc:
+            if exc.status_code == 404:
+                self.cache.invalidate("track", track_id)
+            raise
+        self.cache.set("track", track_id, data)
+        return data
 
     def get_tracks(self, params=None, max_items=None):
         params = {"include": "artist,album", **(params or {})}
-        return self.http.get_all(
+        tracks = self.http.get_all(
             "/tracks/", params=params, max_items=max_items
         )
+        self.cache.set_many("track", tracks)
+        return tracks
+
+    def _seed_album_tracks(self, album):
+        """Cache an album's embedded tracks, enriched with its context.
+
+        Track payloads embedded in an album response may lack their
+        ``artist``/``album`` sub-objects; fill them from the parent so
+        cached tracks carry the same metadata a direct fetch would.
+        """
+        if not isinstance(album, dict):
+            return
+        tracks = album.get("tracks") or []
+        if not tracks:
+            return
+        context = {k: v for k, v in album.items() if k != "tracks"}
+        for track in tracks:
+            if not isinstance(track, dict):
+                continue
+            track.setdefault("album_id", album.get("id"))
+            if not track.get("album"):
+                track["album"] = context
+            track.setdefault("artist_id", context.get("artist_id"))
+            if not track.get("artist"):
+                track["artist"] = context.get("artist")
+        self.cache.set_many("track", tracks)
 
     @memoize(ttl=60)
     def get_artist_tracks(self, artist_id):
@@ -475,14 +553,31 @@ class SonghiveClient:
     @memoize(ttl=60)
     def get_podcast_episodes(self, podcast_id):
         """Episodes of a podcast, newest first."""
-        return self.http.get_all(
+        episodes = self.http.get_all(
             f"/podcasts/{podcast_id}/episodes",
             params={"sort": "newest"},
         )
+        self.cache.set_many("podcast_episode", episodes)
+        return episodes
 
-    @memoize(ttl=None)
-    def get_podcast_episode(self, episode_id):
-        return self.http.get(f"/podcasts/episodes/{episode_id}")
+    def get_podcast_episode(self, episode_id, fresh=False):
+        """Episode payload, served from the metadata cache when known.
+
+        ``fresh=True`` bypasses the cache — playback uses it so a stale
+        ``audio_url`` never breaks streaming.
+        """
+        if not fresh:
+            cached = self.cache.get("podcast_episode", episode_id)
+            if cached is not None:
+                return cached
+        try:
+            data = self.http.get(f"/podcasts/episodes/{episode_id}")
+        except SonghiveHttpError as exc:
+            if exc.status_code == 404:
+                self.cache.invalidate("podcast_episode", episode_id)
+            raise
+        self.cache.set("podcast_episode", episode_id, data)
+        return data
 
     def get_podcast_episodes_by_ids(
         self, episode_ids, max_workers=_MAX_FETCH_WORKERS
@@ -558,10 +653,25 @@ class SonghiveClient:
         """Resolve a handle/URL through ``/remote/lookup``."""
         return self.http.get("/remote/lookup", params={"input": value})
 
-    @memoize(ttl=None)
-    def get_remote_object(self, object_id):
-        data = self.http.get(f"/remote/objects/{object_id}")
-        return data.get("object") or data
+    def get_remote_object(self, object_id, fresh=False):
+        """Remote object payload, served from the metadata cache.
+
+        ``fresh=True`` bypasses the cache — playback uses it so a stale
+        ``audio_url`` never breaks streaming.
+        """
+        if not fresh:
+            cached = self.cache.get("remote", object_id)
+            if cached is not None:
+                return cached
+        try:
+            data = self.http.get(f"/remote/objects/{object_id}")
+        except SonghiveHttpError as exc:
+            if exc.status_code == 404:
+                self.cache.invalidate("remote", object_id)
+            raise
+        obj = data.get("object") or data
+        self.cache.set("remote", object_id, obj)
+        return obj
 
     # ------------------------------------------------------------------
     # URL resolution
@@ -657,7 +767,7 @@ class SonghiveClient:
 
     @memoize(ttl=30)
     def get_playlist_tracks(self, playlist_id):
-        return self.http.get_all(
+        tracks = self.http.get_all(
             f"/playlists/{playlist_id}/tracks",
             params={
                 "include": "artist,album",
@@ -665,6 +775,8 @@ class SonghiveClient:
                 "sort_dir": "asc",
             },
         )
+        self.cache.set_many("track", tracks)
+        return tracks
 
     def _invalidate_playlist(self, playlist_id):
         """Drop cached playlist entries after a mutation."""

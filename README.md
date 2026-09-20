@@ -18,9 +18,10 @@
   instance's remote lookup
 - Direct URL lookup — paste any Songhive or federated URL prefixed with
   `songhive:` (e.g. `songhive:https://music.example.com/tracks/abc123`)
-- Track metadata is fetched once per session and cached; resolving many
-  tracks at once (queueing an album or playlist) uses concurrent
-  requests
+- Track metadata is cached on disk and seeded straight from collection
+  listings, so queueing a browsed album, playlist or podcast needs no
+  extra requests; metadata is re-fetched when a track plays to stay
+  fresh, and the remaining lookups run concurrently
 
 ## Requirements
 
