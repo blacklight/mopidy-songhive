@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- `chore`: Temporarily mark the extension as compatible also with Mopidy < 4.
+  There may be some minor features missing, but at least this makes the
+  extension usable also with system-installed versions of Mopidy until major
+  distros adopt the version 4.
+
 ## 0.1.3
 
 - `perf`: Track, podcast episode and remote object payloads are now

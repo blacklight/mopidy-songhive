@@ -22,7 +22,7 @@ classifiers = [
 ]
 dependencies = [
     "setuptools",
-    "Mopidy >= 4.0",
+    "Mopidy >= 3.4",
     "Pykka >= 1.1",
     "requests >= 2.20",
 ]
