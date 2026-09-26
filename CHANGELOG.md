@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.4
 
 - `chore`: Temporarily mark the extension as compatible also with Mopidy < 4.
   There may be some minor features missing, but at least this makes the
