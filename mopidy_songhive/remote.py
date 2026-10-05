@@ -57,6 +57,7 @@ class SonghiveClient:
         ]
 
         self.album_format = songhive.get("album_format") or "{title}"
+        self.playlist_format = songhive.get("playlist_format") or "{name}"
         self.transcode_format = songhive.get("transcode_format") or None
         bitrate = songhive.get("transcode_bitrate")
         self.transcode_bitrate = str(bitrate) if bitrate else None
@@ -258,6 +259,31 @@ class SonghiveClient:
         except (KeyError, IndexError, ValueError):
             name = data.get("title") or data.get("name")
         return name
+
+    def format_playlist(self, data):
+        """
+        Apply the configured playlist name format to a playlist payload.
+
+        Available keys: ``name``, ``provider`` (the type of the backing
+        external provider, e.g. ``tidal``) and ``owner`` (the owner's
+        username). Missing values collapse their surrounding ``[]``/``()``
+        group so ``"{name} [{provider}]"`` yields ``"Name"`` for local
+        playlists.
+        """
+        values = dict(data)
+        values["provider"] = data.get("provider_type") or ""
+        owner = data.get("owner")
+        values["owner"] = (
+            owner.get("username") or "" if isinstance(owner, dict) else ""
+        )
+        try:
+            name = self.playlist_format.format(**values)
+        except (KeyError, IndexError, ValueError):
+            name = data.get("name")
+        if name:
+            name = re.sub(r"[\[(]\s*[\])]", "", name)
+            name = " ".join(name.split())
+        return name or data.get("name")
 
     def to_podcast_track(self, data, podcast=None):
         """Convert a PodcastEpisode payload into a mopidy Track.
@@ -759,11 +785,17 @@ class SonghiveClient:
 
     @memoize(ttl=30)
     def get_playlists(self):
-        return self.http.get_all("/playlists/", params={"sort_by": "name"})
+        params = {"sort_by": "name"}
+        if "{owner" in self.playlist_format:
+            params["include"] = "owner"
+        return self.http.get_all("/playlists/", params=params)
 
     @memoize(ttl=30)
     def get_playlist(self, playlist_id):
-        return self.http.get(f"/playlists/{playlist_id}")
+        params = (
+            {"include": "owner"} if "{owner" in self.playlist_format else None
+        )
+        return self.http.get(f"/playlists/{playlist_id}", params=params)
 
     @memoize(ttl=30)
     def get_playlist_tracks(self, playlist_id):

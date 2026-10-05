@@ -133,6 +133,7 @@ def config():
             "api_token": "test-token",
             "libraries": "",
             "album_format": "{title}",
+            "playlist_format": "{name}",
             "transcode_format": "",
             "transcode_bitrate": None,
         },
@@ -202,6 +203,7 @@ def backend_mock(songhive_client):
         "to_podcast_track",
         "remote_object_track",
         "format_album",
+        "format_playlist",
         "is_own_url",
     ):
         setattr(remote, name, getattr(songhive_client, name))

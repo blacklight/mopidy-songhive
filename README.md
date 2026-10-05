@@ -69,6 +69,11 @@ libraries = Music, Audiobooks
 # Format for displaying album names (default: {title})
 album_format = {title} ({release_year})
 
+# Format for displaying playlist names (default: {name}).
+# Available keys: name, provider, owner — e.g. disambiguate playlists
+# synced from multiple external providers:
+playlist_format = {name} [{provider}]
+
 # Optional server-side transcoding for streams
 transcode_format = opus     # mp3|ogg|flac|aac|opus
 transcode_bitrate = 128     # kbps

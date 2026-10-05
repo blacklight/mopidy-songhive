@@ -232,6 +232,33 @@ def test_playlist_mutations(songhive_client, mocker):
     songhive_client.http.delete.assert_called_with("/playlists/p1")
 
 
+def test_format_playlist_default(songhive_client):
+    assert songhive_client.format_playlist({"name": "Dancing"}) == "Dancing"
+
+
+def test_format_playlist_provider_suffix(songhive_client):
+    songhive_client.playlist_format = "{name} [{provider}]"
+    playlist = {"name": "Dancing", "provider_type": "tidal"}
+    assert songhive_client.format_playlist(playlist) == "Dancing [tidal]"
+
+
+def test_format_playlist_collapses_empty_provider_group(songhive_client):
+    """Local playlists keep their plain name with a provider format."""
+    songhive_client.playlist_format = "{name} [{provider}]"
+    assert songhive_client.format_playlist({"name": "Dancing"}) == "Dancing"
+
+
+def test_format_playlist_owner_key(songhive_client):
+    songhive_client.playlist_format = "{name} ({owner})"
+    playlist = {"name": "Dancing", "owner": {"username": "alice"}}
+    assert songhive_client.format_playlist(playlist) == "Dancing (alice)"
+
+
+def test_format_playlist_bad_format_falls_back(songhive_client):
+    songhive_client.playlist_format = "{bogus}"
+    assert songhive_client.format_playlist({"name": "Dancing"}) == "Dancing"
+
+
 def test_add_playlist_tracks_409_tolerated(songhive_client, mocker):
     songhive_client.http = mocker.Mock()
     songhive_client.http.post.side_effect = SonghiveHttpError(409, "conflict")

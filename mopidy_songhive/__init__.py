@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 
 from mopidy import config, ext
 
@@ -15,7 +16,7 @@ class Extension(ext.Extension):
     version = __version__
 
     def get_default_config(self):
-        conf_file = os.path.join(os.path.dirname(__file__), "ext.conf")
+        conf_file = Path(os.path.dirname(__file__), "ext.conf")
         return config.read(conf_file)
 
     def get_config_schema(self):
@@ -24,6 +25,7 @@ class Extension(ext.Extension):
         schema["api_token"] = config.Secret(optional=True)
         schema["libraries"] = config.String(optional=True)
         schema["album_format"] = config.String(optional=True)
+        schema["playlist_format"] = config.String(optional=True)
         schema["transcode_format"] = config.String(optional=True)
         schema["transcode_bitrate"] = config.Integer(optional=True)
         return schema

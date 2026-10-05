@@ -54,7 +54,7 @@ class SonghivePlaylistsProvider(backend.PlaylistsProvider):
         refs = [
             models.Ref.playlist(
                 uri=urilib.playlist_uri(p["id"]),
-                name=p.get("name") or "",
+                name=self._remote.format_playlist(p) or "",
             )
             for p in playlists
         ]
@@ -87,7 +87,7 @@ class SonghivePlaylistsProvider(backend.PlaylistsProvider):
             return None
         return models.Playlist(
             uri=uri,
-            name=data.get("name"),
+            name=self._remote.format_playlist(data),
             tracks=tracks,
         )
 
@@ -178,7 +178,14 @@ class SonghivePlaylistsProvider(backend.PlaylistsProvider):
             if playlist.name:
                 try:
                     remote_data = self._remote.get_playlist(playlist_id)
-                    if remote_data.get("name") != playlist.name:
+                    # ``playlist.name`` may carry the configured
+                    # ``playlist_format`` decoration — never write that
+                    # back as the stored name.
+                    remote_names = {
+                        remote_data.get("name"),
+                        self._remote.format_playlist(remote_data),
+                    }
+                    if playlist.name not in remote_names:
                         self._remote.rename_playlist(
                             playlist_id, playlist.name
                         )

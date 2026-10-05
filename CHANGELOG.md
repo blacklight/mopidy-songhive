@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- `feat`: Playlists gained a `playlist_format` setting that formats
+  display names with `{name}`, `{provider}` and `{owner}` keys, so
+  same-named playlists synced from different external providers can
+  be told apart (e.g. `{name} [{provider}]`); the owner is fetched
+  on demand, and the decorated name is never written back to the
+  server on rename.
+  ([`e54845e`](https://git.platypush.tech/blacklight/mopidy-songhive/commit/e54845ed5c737deb567cb52eb530a00063d460cc)).
+
 ## 0.1.4
 
 - `chore`: Temporarily mark the extension as compatible also with Mopidy < 4.

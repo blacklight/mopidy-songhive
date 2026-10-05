@@ -25,6 +25,25 @@ def test_as_list(provider, backend_mock):
     assert all(r.type == mopidy.models.Ref.PLAYLIST for r in refs)
 
 
+def test_as_list_applies_playlist_format(
+    provider, backend_mock, songhive_client
+):
+    songhive_client.playlist_format = "{name} [{provider}]"
+    backend_mock.remote.get_playlists.return_value = [
+        dict(PLAYLIST, name="Dancing", provider_type="tidal"),
+        dict(
+            PLAYLIST, id="playlist-2", name="Dancing", provider_type="youtube"
+        ),
+        dict(PLAYLIST, id="playlist-3", name="Local picks"),
+    ]
+    refs = provider.as_list()
+    assert [r.name for r in refs] == [
+        "Dancing [tidal]",
+        "Dancing [youtube]",
+        "Local picks",
+    ]
+
+
 def test_get_items(provider, backend_mock):
     backend_mock.remote.get_playlist_tracks.return_value = [TRACK, TRACK_2]
     refs = provider.get_items("songhive:playlist:playlist-1")
@@ -146,6 +165,24 @@ def test_save_renames(provider, backend_mock):
     backend_mock.remote.rename_playlist.assert_called_once_with(
         "playlist-1", "Renamed"
     )
+
+
+def test_save_does_not_write_back_formatted_name(
+    provider, backend_mock, songhive_client
+):
+    """A save with the decorated display name must not rename remotely."""
+    songhive_client.playlist_format = "{name} [{provider}]"
+    backend_mock.remote.get_playlist_tracks.return_value = [TRACK]
+    backend_mock.remote.get_playlist.return_value = dict(
+        PLAYLIST, provider_type="tidal"
+    )
+    playlist = mopidy.models.Playlist(
+        uri="songhive:playlist:playlist-1",
+        name="My Playlist [tidal]",
+        tracks=[track_model("track-1")],
+    )
+    provider.save(playlist)
+    backend_mock.remote.rename_playlist.assert_not_called()
 
 
 def test_save_anonymous(provider, backend_mock):
