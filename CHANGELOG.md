@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.5
 
 - `feat`: Playlists gained a `playlist_format` setting that formats
   display names with `{name}`, `{provider}` and `{owner}` keys, so

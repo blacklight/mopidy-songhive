@@ -69,7 +69,7 @@ module = [
 ignore_missing_imports = true
 
 [tool.bumpversion]
-current_version = "0.1.4"
+current_version = "0.1.5"
 commit = true
 tag = true
 
